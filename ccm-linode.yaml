@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ccm-linode
+  labels:
+    app: ccm-linode
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: ccm-linode
+  template:
+    metadata:
+      labels:
+        app: ccm-linode
+    spec:
+      serviceAccountName: ccm-linode
+      nodeSelector:
+        # The CCM will only run on a Node labelled as a master, you may want to change this
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+        # The CCM can run on Nodes tainted as masters
+        - key: "node-role.kubernetes.io/control-plane"
+          effect: "NoSchedule"
+        # The CCM is a "critical addon"
+        - key: "CriticalAddonsOnly"
+          operator: "Exists"
+        # This taint is set on all Nodes when an external CCM is used
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          value: "true"
+          effect: NoSchedule
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoSchedule
+      automountServiceAccountToken: true
+      containers:
+        - image: linode/linode-cloud-controller-manager:v0.4.19
+          imagePullPolicy: IfNotPresent
+          name: ccm-linode
+          args:
+          - --v=3
+          - --secure-port=10253
+          volumeMounts:
+          - mountPath: /etc/kubernetes
+            name: k8s
+          env:
+            - name: LINODE_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ccm-linode
+                  key: apiToken
+            - name: LINODE_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: ccm-linode
+                  key: region
+      volumes:
+      - name: k8s
+        hostPath:
+          path: /etc/kubernetes
